@@ -309,12 +309,15 @@ async function version() {
 
 // Raw, copyable results for the Settings diagnostics panel: exactly what
 // wslc answered, so bug reports contain facts instead of guesses.
+// Bypasses the call queue on purpose: when the queue is stuck behind a
+// wedged session, diagnostics must still answer. A sharing violation in
+// the output is itself a useful signal here.
 async function diagnose() {
   if (MOCK) return { bin: 'mock', steps: [{ cmd: 'mock', code: 0, ms: 0, stdout: 'mock backend active', stderr: '' }] };
   const steps = [];
   for (const args of [['--version'], ['system', 'session', 'list'], ['list', '-a']]) {
     const t0 = Date.now();
-    const res = await run(args, { timeout: 120_000 });
+    const res = await runOnce(args, 45_000);
     steps.push({
       cmd: `wslc ${args.join(' ')}`,
       code: res.code,
