@@ -1,7 +1,7 @@
 {
   "name": "wslc-desktop",
   "productName": "WSLC Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A simple, fluid desktop app for WSL containers (wslc) — manage containers, images, volumes and networks like Docker Desktop, the Windows way.",
   "author": "Bacar Ndiaye",
   "license": "MIT",
@@ -35,7 +35,7 @@
       "target": [
         { "target": "nsis", "arch": ["x64", "arm64"] }
       ],
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "WSLC-Desktop-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": true,
