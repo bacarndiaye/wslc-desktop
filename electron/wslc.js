@@ -33,7 +33,20 @@ function findBin() {
   return cachedBin;
 }
 
-function run(args, { timeout = DEFAULT_TIMEOUT } = {}) {
+// wslc.exe locks its session files: two concurrent invocations fail with
+// ERROR_SHARING_VIOLATION. All calls therefore go through a single-lane
+// queue (terminals never run two commands at once — we must not either),
+// and transient sharing violations are retried.
+let queueTail = Promise.resolve();
+function enqueue(fn) {
+  const next = queueTail.then(fn, fn);
+  queueTail = next.then(() => {}, () => {});
+  return next;
+}
+
+const SHARING_VIOLATION = /ERROR_SHARING_VIOLATION|0x80070020|utilisé par un autre processus|used by another process/i;
+
+function runOnce(args, timeout) {
   return new Promise((resolve) => {
     const child = execFile(findBin(), args, {
       timeout,
@@ -50,6 +63,17 @@ function run(args, { timeout = DEFAULT_TIMEOUT } = {}) {
       });
     });
     child.on('error', (err) => resolve({ ok: false, code: 1, timedOut: false, stdout: '', stderr: String(err.message) }));
+  });
+}
+
+function run(args, { timeout = DEFAULT_TIMEOUT } = {}) {
+  return enqueue(async () => {
+    let res = await runOnce(args, timeout);
+    for (let attempt = 0; !res.ok && SHARING_VIOLATION.test(res.stderr + res.stdout) && attempt < 3; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      res = await runOnce(args, timeout);
+    }
+    return res;
   });
 }
 
@@ -165,6 +189,9 @@ function friendlyError(res) {
   const msg = (res.stderr || res.stdout || '').trim();
   if (/0x8007000e|too many volumes/i.test(msg)) {
     return 'This WSL session hit the preview limit of ~15 mounted volumes. Run "wsl --shutdown" from Windows, then try again.';
+  }
+  if (SHARING_VIOLATION.test(msg)) {
+    return 'wslc files are locked by another wslc command still running. It usually clears on the next refresh; close other wslc windows if it persists.';
   }
   return msg || `wslc exited with code ${res.code}`;
 }

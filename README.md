@@ -47,6 +47,22 @@ installed (`wslc` must work in a terminal).
 > session per elevation level; an elevated app would see different containers than
 > your regular terminals. The session bar tells you where you are.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Releases are built exclusively by [GitHub Actions](.github/workflows/release.yml)
+  from the source in this repository, and only tagged releases are signed.
+- Committers and reviewers: [Bacar Ndiaye](https://github.com/bacarndiaye) (project
+  maintainer). Approvers: the maintainer approves every signing request.
+- Until the SignPath application is approved, installers are unsigned and Windows
+  SmartScreen shows an "unknown publisher" notice: choose *More info → Run anyway*.
+
+**Privacy statement**: WSLC Desktop does not transfer any information to other
+networked systems. It only invokes the local `wslc.exe` CLI; the only network
+activity is the one you request explicitly (pulling images through wslc).
+
 ## Development
 
 ```console

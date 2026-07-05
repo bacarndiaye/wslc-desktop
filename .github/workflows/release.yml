@@ -7,6 +7,12 @@ on:
 permissions:
   contents: write
 
+# Code signing (SignPath Foundation) activates automatically once the
+# repository has the SIGNPATH_API_TOKEN secret and SIGNPATH_ORGANIZATION_ID
+# variable configured. Until then, releases ship unsigned.
+env:
+  HAVE_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+
 jobs:
   release:
     runs-on: windows-latest
@@ -16,12 +22,38 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npm run dist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload unsigned installers for signing
+        if: env.HAVE_SIGNPATH == 'true'
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installers
+          path: dist/*.exe
+          retention-days: 3
+
+      - name: Sign installers (SignPath Foundation)
+        if: env.HAVE_SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: wslc-desktop
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed
+
+      - name: Replace installers with signed versions
+        if: env.HAVE_SIGNPATH == 'true'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/signed -Filter *.exe -Recurse | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path dist $_.Name) -Force
+            Write-Host "signed: $($_.Name)"
+          }
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*.exe
-            dist/*.blockmap
-            dist/latest.yml
+          files: dist/*.exe
           generate_release_notes: true

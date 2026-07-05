@@ -3,6 +3,7 @@
    Mica behind us on Windows, so surfaces are translucent layers. */
 
 :root {
+  color-scheme: dark;          /* native controls (select popups, scrollbars) */
   --accent:        #60CDFF;
   --accent-fg:     #003350;      /* text on accent (dark theme buttons) */
   --accent-hover:  #79d5ff;
@@ -40,6 +41,7 @@
 }
 
 html[data-theme="light"] {
+  color-scheme: light;
   --accent:        #005FB8;
   --accent-fg:     #ffffff;
   --accent-hover:  #1a6fc4;
@@ -88,6 +90,7 @@ body { display: flex; flex-direction: column; }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 input, select { font: inherit; color: var(--text); }
+select, option { background-color: var(--base); }
 code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
 
 /* =============================================================== titlebar */
