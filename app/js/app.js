@@ -29,7 +29,7 @@ const ctx = {
   async applyThemeFromSettings() {
     const dark = ctx.settings.theme === 'dark' ? true
       : ctx.settings.theme === 'light' ? false
-        : await host.isDark();
+        : await host.isDark().catch(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   },
 };
@@ -184,8 +184,10 @@ async function boot() {
     document.documentElement.classList.add('no-mica');
   }
 
-  ctx.settings = await host.getSettings();
-  ctx.appVersion = await host.appVersion();
+  try {
+    ctx.settings = await host.getSettings();
+    ctx.appVersion = await host.appVersion();
+  } catch { /* bridge unavailable: keep defaults so the UI still renders */ }
   await ctx.applyThemeFromSettings();
   host.onThemeChanged(async () => { await ctx.applyThemeFromSettings(); });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => ctx.applyThemeFromSettings());

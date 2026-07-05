@@ -138,8 +138,13 @@ function registerIpc() {
 
 /* --------------------------------------------------------------- boot */
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
+module.exports = { registerIpc };
+
+// Only drive the app lifecycle when loaded as the entry point (tools like
+// scripts/screenshot.mjs require this file just for registerIpc).
+if (require.main !== module) {
+  /* library use */
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
