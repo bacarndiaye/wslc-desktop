@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WSLC Desktop — a desktop app for WSL containers</title>
+<meta name="description" content="WSLC Desktop is a simple, fluid Windows 11 app for Microsoft's WSL container preview (wslc): containers, images, volumes, networks, live logs — no daemon, no telemetry.">
+<meta property="og:title" content="WSLC Desktop">
+<meta property="og:description" content="Docker Desktop features for WSL containers, the Windows way.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect x='12' y='12' width='232' height='232' rx='52' fill='%230067C0'/%3E%3Crect x='52' y='52' width='68' height='68' rx='13' fill='%23fff' opacity='.55'/%3E%3Crect x='132' y='52' width='68' height='68' rx='13' fill='%23fff' opacity='.55'/%3E%3Crect x='52' y='132' width='68' height='68' rx='13' fill='%23fff' opacity='.55'/%3E%3Crect x='126' y='126' width='86' height='86' rx='16' fill='%23fff'/%3E%3Cpath d='M142 152h54M142 169h54M142 186h54' stroke='%230067C0' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --accent: #005FB8;
+    --accent-2: #0067C0;
+    --accent-3: #4CC2FF;
+    --text: #1b1b1b;
+    --text-2: rgba(0,0,0,.62);
+    --base: #f3f3f3;
+    --card: #ffffff;
+    --card-2: #fbfbfb;
+    --stroke: rgba(0,0,0,.07);
+    --stroke-2: rgba(0,0,0,.14);
+    --shadow: 0 20px 60px rgba(0,40,90,.14);
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #60CDFF;
+      --accent-2: #4CC2FF;
+      --text: rgba(255,255,255,.93);
+      --text-2: rgba(255,255,255,.60);
+      --base: #202020;
+      --card: #2b2b2b;
+      --card-2: #262626;
+      --stroke: rgba(255,255,255,.08);
+      --stroke-2: rgba(255,255,255,.16);
+      --shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 70% -10%, color-mix(in srgb, var(--accent-3) 14%, transparent), transparent 60%),
+      var(--base);
+    color: var(--text);
+    font: 16px/1.6 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  header.site {
+    display: flex; align-items: center; gap: 12px;
+    padding: 18px 0;
+  }
+  .logo { width: 30px; height: 30px; border-radius: 7px; }
+  .brand { font-weight: 600; font-size: 15px; }
+  header.site nav { margin-left: auto; display: flex; gap: 22px; font-size: 14px; }
+  header.site nav a { color: var(--text-2); }
+  header.site nav a:hover { color: var(--text); text-decoration: none; }
+
+  /* ------------------------------------------------------------- hero */
+  .hero { text-align: center; padding: 56px 0 26px; }
+  .hero .pills { display: flex; gap: 8px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
+  .pill {
+    font-size: 12.5px; padding: 4px 13px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--stroke); color: var(--text-2);
+  }
+  .hero h1 {
+    font: 600 clamp(34px, 6vw, 56px)/1.08 var(--font-display);
+    letter-spacing: -0.015em;
+    margin-bottom: 16px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent-3));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.sub { font-size: 18px; color: var(--text-2); max-width: 620px; margin: 0 auto 30px; }
+  .hero p.sub strong { color: var(--text); font-weight: 600; }
+
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    height: 42px; padding: 0 24px; border-radius: 7px;
+    font-weight: 600; font-size: 15px;
+    border: 1px solid var(--stroke-2);
+    background: var(--card); color: var(--text);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary {
+    background: linear-gradient(180deg, var(--accent-2), #005FB8);
+    border-color: transparent; color: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    .btn.primary { background: var(--accent); color: #003350; }
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .cta-note { font-size: 12.5px; color: var(--text-2); }
+  .cta-note code { font-family: var(--mono); font-size: 12px; }
+
+  /* ------------------------------------------------- the app "window" */
+  .window {
+    margin: 44px auto 0;
+    max-width: 980px;
+    border-radius: 12px;
+    border: 1px solid var(--stroke-2);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    background: var(--card);
+  }
+  .window .chrome {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 14px;
+    background: var(--card-2);
+    border-bottom: 1px solid var(--stroke);
+  }
+  .window .chrome img { width: 16px; height: 16px; border-radius: 4px; }
+  .window .chrome span { font-size: 12px; color: var(--text-2); }
+  .window .caption { margin-left: auto; display: flex; gap: 18px; color: var(--text-2); font-size: 11px; }
+  .window img.shot { display: block; width: 100%; height: auto; }
+
+  /* ---------------------------------------------------------- sections */
+  section { padding: 64px 0 8px; }
+  section h2 { font: 600 28px/1.25 var(--font-display); letter-spacing: -0.01em; margin-bottom: 8px; }
+  section > .wrap > p.lead { color: var(--text-2); max-width: 640px; margin-bottom: 34px; }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
+    padding: 22px 24px;
+  }
+  .card.hi { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .card .ic { font-size: 20px; margin-bottom: 10px; }
+  .card h3 { font-size: 15.5px; margin-bottom: 6px; }
+  .card p { font-size: 14px; color: var(--text-2); }
+  .card code { font-family: var(--mono); font-size: 12px; background: var(--base); border: 1px solid var(--stroke); border-radius: 4px; padding: 1px 5px; }
+
+  .duo { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+  .shotcard { border-radius: 10px; overflow: hidden; border: 1px solid var(--stroke-2); box-shadow: var(--shadow); }
+  .shotcard img { display: block; width: 100%; height: auto; }
+  .shotlabel { font-size: 13px; color: var(--text-2); margin: 10px 2px 0; }
+
+  ol.steps { counter-reset: s; list-style: none; max-width: 620px; }
+  ol.steps li {
+    counter-increment: s;
+    display: flex; gap: 16px; align-items: flex-start;
+    padding: 14px 0;
+  }
+  ol.steps li + li { border-top: 1px solid var(--stroke); }
+  ol.steps li::before {
+    content: counter(s);
+    flex: none;
+    width: 28px; height: 28px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+  }
+  @media (prefers-color-scheme: dark) { ol.steps li::before { color: #003350; } }
+  ol.steps code { font-family: var(--mono); font-size: 13px; }
+
+  .callout {
+    margin-top: 26px;
+    border: 1px solid var(--stroke);
+    border-left: 4px solid var(--accent);
+    background: var(--card);
+    border-radius: 8px; padding: 16px 20px;
+    font-size: 14px; color: var(--text-2); max-width: 720px;
+  }
+  .callout strong { color: var(--text); }
+
+  footer {
+    margin-top: 70px; padding: 30px 0 46px;
+    border-top: 1px solid var(--stroke);
+    font-size: 13.5px; color: var(--text-2); text-align: center;
+  }
+  footer .links { display: flex; gap: 20px; justify-content: center; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <svg class="logo" viewBox="0 0 256 256" aria-hidden="true"><rect x="12" y="12" width="232" height="232" rx="52" fill="#0067C0"/><rect x="52" y="52" width="68" height="68" rx="13" fill="#fff" opacity=".55"/><rect x="132" y="52" width="68" height="68" rx="13" fill="#fff" opacity=".55"/><rect x="52" y="132" width="68" height="68" rx="13" fill="#fff" opacity=".55"/><rect x="126" y="126" width="86" height="86" rx="16" fill="#fff"/><path d="M142 152h54M142 169h54M142 186h54" stroke="#0067C0" stroke-width="9" stroke-linecap="round"/></svg>
+    <span class="brand">WSLC Desktop</span>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#design">Design</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/bacarndiaye/wslc-desktop">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="hero wrap">
+  <div class="pills">
+    <span class="pill">For the WSL container preview (wslc)</span>
+    <span class="pill">Free &amp; open source · MIT</span>
+  </div>
+  <h1>Your WSL containers,<br>in a real <em>Windows</em> app</h1>
+  <p class="sub">
+    Microsoft's new <strong>wslc</strong> runs containers natively on Windows — from a terminal.
+    WSLC Desktop gives it the desktop it deserves: containers, images, volumes, networks
+    and live logs in a simple, fluid Windows&nbsp;11 app. <strong>No daemon, no telemetry.</strong>
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/bacarndiaye/wslc-desktop/releases/latest">⭳ Download for Windows</a>
+    <a class="btn" href="https://github.com/bacarndiaye/wslc-desktop">View source</a>
+  </div>
+  <div class="cta-note">Per-user installer, no admin rights needed · Windows 11 with the <a href="https://learn.microsoft.com/windows/wsl/wsl-container">WSL container preview</a></div>
+
+  <div class="window">
+    <div class="chrome">
+      <svg style="width:16px;height:16px;border-radius:4px" viewBox="0 0 256 256" aria-hidden="true"><rect x="12" y="12" width="232" height="232" rx="52" fill="#0067C0"/><rect x="126" y="126" width="86" height="86" rx="16" fill="#fff"/></svg>
+      <span>WSLC Desktop</span>
+      <div class="caption" aria-hidden="true"><span>—</span><span>▢</span><span>✕</span></div>
+    </div>
+    <picture>
+      <source srcset="shots/shot-containers-dark.png" media="(prefers-color-scheme: dark)">
+      <img class="shot" src="shots/shot-containers.png" alt="WSLC Desktop showing running containers grouped by compose project, with status, images and published ports" width="1280" height="820">
+    </picture>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Everything Docker Desktop taught you to expect</h2>
+    <p class="lead">…without the weight. The app is a thin shell over <code>wslc.exe</code>: nothing runs when it's closed.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">▶</div><h3>Containers at a glance</h3>
+        <p>Start, stop, restart, remove. Status, image and published ports on every row — one click opens a port in your browser or a shell in Windows Terminal.</p></div>
+      <div class="card"><div class="ic">≡</div><h3>Live logs &amp; inspect</h3>
+        <p>Streaming logs with auto-follow, and the container's full configuration one tab away.</p></div>
+      <div class="card"><div class="ic">◫</div><h3>Images, volumes, networks</h3>
+        <p>Pull from any registry, run an image with a quick dialog (ports, volumes, environment), create and clean up volumes and networks.</p></div>
+      <div class="card hi"><div class="ic">🧭</div><h3>The session bar</h3>
+        <p>wslc keeps a separate world per user <em>and elevation level</em>. The bar always shows which session you're in, flags Administrator sessions, and turns preview errors into plain guidance.</p></div>
+      <div class="card"><div class="ic">🧩</div><h3>Compose-aware</h3>
+        <p>Containers managed by <a href="https://github.com/bacarndiaye/wslc-compose">wslc-compose</a> are grouped under their project, like Docker Desktop groups compose stacks.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Nothing leaves your machine</h3>
+        <p>No account, no telemetry, no background service. Open source under MIT.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <h2>Windows-native by design</h2>
+    <p class="lead">Fluent design tokens, Mica window material, Segoe UI Variable for text and Cascadia Mono for the technical bits. Light and dark follow Windows.</p>
+    <div class="duo">
+      <div>
+        <div class="shotcard"><img src="shots/shot-detail-dark.png" alt="Container detail pane with Overview, Logs and Inspect tabs, dark theme" loading="lazy" width="1279" height="819"></div>
+        <div class="shotlabel">Detail pane — overview, live logs and inspect, one tab apart.</div>
+      </div>
+      <div>
+        <div class="shotcard"><img src="shots/shot-images.png" alt="Images page with pull, run and remove actions, light theme" loading="lazy" width="1280" height="820"></div>
+        <div class="shotlabel">Images — pull, run with a quick dialog, clean up.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install in a minute</h2>
+    <ol class="steps">
+      <li><div>Make sure the <a href="https://learn.microsoft.com/windows/wsl/wsl-container">WSL container preview</a> is installed — <code>wslc list</code> must work in a terminal.</div></li>
+      <li><div>Download <strong>WSLC&nbsp;Desktop&nbsp;Setup</strong> from the <a href="https://github.com/bacarndiaye/wslc-desktop/releases/latest">latest release</a> and run it (per-user, no admin rights).</div></li>
+      <li><div>Launch WSLC Desktop. Your containers, images, volumes and networks are already there.</div></li>
+    </ol>
+    <div class="callout">
+      <strong>Tip — stay non-elevated.</strong> wslc keeps one session per elevation level: an
+      elevated app sees different containers than your normal terminals. Run WSLC Desktop
+      (and your terminals) without administrator rights; the session bar confirms where you are.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/bacarndiaye/wslc-desktop">GitHub</a>
+      <a href="https://github.com/bacarndiaye/wslc-desktop/releases">Releases</a>
+      <a href="https://github.com/bacarndiaye/wslc-desktop/issues">Issues</a>
+      <a href="https://github.com/bacarndiaye/wslc-compose">wslc-compose</a>
+    </div>
+    <div>MIT © Bacar Ndiaye — not affiliated with Microsoft. <em>wslc</em> is part of the WSL container preview.</div>
+  </div>
+</footer>
+
+</body>
+</html>

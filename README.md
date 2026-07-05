@@ -9,6 +9,8 @@ Microsoft's WSL container preview ships `wslc`, a CLI that runs containers nativ
 Windows — but no graphical client. WSLC Desktop fills that gap: a native-feeling
 Windows 11 app (Fluent design, Mica, Segoe UI) to see and control everything wslc runs.
 
+![WSLC Desktop — containers view](docs/shots/shot-containers-dark.png)
+
 > Sister project: [wslc-compose](https://github.com/bacarndiaye/wslc-compose) brings
 > `docker-compose.yml` support to wslc. WSLC Desktop recognizes its containers and
 > groups them by compose project.
