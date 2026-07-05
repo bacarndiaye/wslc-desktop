@@ -80,7 +80,11 @@ async function refresh(immediateRender = false) {
     if (n.ok) ctx.data.networks = n.items;
     ctx.data.loaded = true;
     void resolveComposeProjects();
-    updateEngineStatus(!ctx.data.error);
+    const anyOk = [c, i, v, n].some((r) => r.ok);
+    updateEngineStatus(anyOk && !ctx.data.error);
+    // If the engine answered but the boot-time probe had failed (cold
+    // session), fill in the version and session details now.
+    if (anyOk && !ctx.wslcVersion) void initSessionBar();
   } finally {
     refreshing = false;
   }
@@ -125,25 +129,43 @@ async function act(name, action, verb) {
 
 /* ------------------------------------------------------------ sessionbar */
 
+let firstContact = false;
+
 function updateEngineStatus(ok) {
   const dot = document.querySelector('#sess-engine .dot');
   const text = document.getElementById('sess-engine-text');
+  if (ok) firstContact = true;
+  if (!ok && !firstContact) {
+    // Nothing has answered yet: most likely the wslc session is cold-starting
+    // (first call after a Windows boot can take over a minute).
+    dot.className = 'dot dot-wait';
+    text.textContent = 'Starting the wslc session… first start can take a minute';
+    return;
+  }
   dot.className = `dot ${ok ? 'dot-running' : 'dot-error'}`;
   text.textContent = ok
     ? (ctx.wslcVersion || 'wslc engine')
-    : 'wslc not responding';
+    : 'wslc not responding — open Settings for diagnostics';
 }
 
 function updateHint(msg) {
   document.getElementById('sess-hint').textContent = msg;
 }
 
+let sessionBarBusy = false;
 async function initSessionBar() {
+  if (sessionBarBusy) return;
+  sessionBarBusy = true;
+  try { await initSessionBarInner(); } finally { sessionBarBusy = false; }
+}
+
+async function initSessionBarInner() {
   const ver = await api.version();
   ctx.wslcVersion = ver.ok ? ver.version : '';
   updateEngineStatus(ver.ok);
 
   if (await api.isMock()) document.getElementById('sess-mock').hidden = false;
+  if (!ver.ok) return; // refresh() keeps retrying; session details wait for contact
 
   const info = await api.sessionInfo();
   if (info.ok && info.sessions.length) {

@@ -45,3 +45,21 @@ test('normalizeImage builds a reference from repo + tag', () => {
 test('pick is case-insensitive and skips empties', () => {
   assert.equal(pick({ FOO: '', bar: 'x' }, 'foo', 'bar'), 'x');
 });
+
+test('enqueue runs jobs strictly one at a time, even after failures', async () => {
+  const { enqueue } = _internals;
+  const order = [];
+  let active = 0;
+  const job = (name, ms, fail = false) => enqueue(async () => {
+    active += 1;
+    assert.equal(active, 1, 'two wslc calls ran concurrently');
+    await new Promise((r) => setTimeout(r, ms));
+    order.push(name);
+    active -= 1;
+    if (fail) throw new Error('boom');
+  });
+  const results = await Promise.allSettled([job('a', 30), job('b', 5, true), job('c', 10)]);
+  assert.deepEqual(order, ['a', 'b', 'c']);
+  assert.equal(results[1].status, 'rejected');
+  assert.equal(results[2].status, 'fulfilled');
+});

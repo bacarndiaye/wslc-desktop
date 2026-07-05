@@ -13,7 +13,10 @@ const fs = require('node:fs');
 const MOCK = process.env.WSLC_DESKTOP_MOCK === '1';
 const mock = MOCK ? require('./mock') : null;
 
-const DEFAULT_TIMEOUT = 30_000;
+// The first wslc call after a Windows boot starts the whole session
+// (utility VM): it can take well over a minute. Timeouts are generous and
+// the UI reports "starting" rather than failing fast.
+const DEFAULT_TIMEOUT = 120_000;
 const LONG_TIMEOUT = 15 * 60_000; // pull / build
 
 let cachedBin = null;
@@ -300,8 +303,29 @@ async function removeNetwork(name) {
 
 async function version() {
   if (MOCK) return mock.version();
-  const res = await run(['--version'], { timeout: 10_000 });
+  const res = await run(['--version'], { timeout: 60_000 });
   return { ok: res.ok, version: (res.stdout || res.stderr).trim().split(/\r?\n/)[0] || 'unknown' };
+}
+
+// Raw, copyable results for the Settings diagnostics panel: exactly what
+// wslc answered, so bug reports contain facts instead of guesses.
+async function diagnose() {
+  if (MOCK) return { bin: 'mock', steps: [{ cmd: 'mock', code: 0, ms: 0, stdout: 'mock backend active', stderr: '' }] };
+  const steps = [];
+  for (const args of [['--version'], ['system', 'session', 'list'], ['list', '-a']]) {
+    const t0 = Date.now();
+    const res = await run(args, { timeout: 120_000 });
+    steps.push({
+      cmd: `wslc ${args.join(' ')}`,
+      code: res.code,
+      timedOut: res.timedOut,
+      ms: Date.now() - t0,
+      stdout: res.stdout.slice(0, 4000),
+      stderr: res.stderr.slice(0, 4000),
+    });
+    if (res.timedOut) break; // no point hammering a wedged session
+  }
+  return { bin: findBin(), steps };
 }
 
 // Session facts for the session bar. Elevation is inferred from the session
@@ -362,8 +386,9 @@ module.exports = {
   removeNetwork,
   version,
   sessionInfo,
+  diagnose,
   startLogs,
   stopLogs,
   // exported for unit tests
-  _internals: { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick },
+  _internals: { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick, enqueue },
 };

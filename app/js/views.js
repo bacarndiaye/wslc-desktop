@@ -323,6 +323,35 @@ export function settingsView(ctx) {
     ),
     el('div', { style: 'margin-top:36px; color: var(--text-2); font-size: 12px', class: 'mono', text: `WSLC Desktop ${ctx.appVersion} · ${ctx.wslcVersion || 'wslc not detected'}` }),
   );
+
+  // Diagnostics: raw wslc output, copyable — what a bug report needs.
+  const diagOut = el('pre', { class: 'inspect', style: 'display:none; margin-top:12px; padding:12px; border:1px solid var(--stroke); border-radius:6px; max-width:720px; user-select:text' });
+  const diagBtn = el('button', {
+    class: 'btn', onclick: async () => {
+      diagBtn.disabled = true;
+      diagOut.style.display = 'block';
+      diagOut.textContent = 'Talking to wslc… a cold session can take a minute.';
+      try {
+        const d = await api.diagnose();
+        const lines = [`binary: ${d.bin}`];
+        for (const s of d.steps || []) {
+          lines.push('', `$ ${s.cmd}   (exit ${s.code}${s.timedOut ? ', TIMED OUT' : ''}, ${s.ms} ms)`);
+          if (s.stdout) lines.push(s.stdout.trim());
+          if (s.stderr) lines.push(`[stderr] ${s.stderr.trim()}`);
+        }
+        diagOut.textContent = lines.join('\n');
+      } catch (e) {
+        diagOut.textContent = `diagnostics failed: ${e.message}`;
+      }
+      diagBtn.disabled = false;
+    },
+  }, 'Run diagnostics');
+  root.append(
+    el('div', { class: 'group-label', text: 'Troubleshooting' }),
+    el('p', { style: 'color:var(--text-2); font-size:13px; margin-bottom:10px; max-width:560px', text: 'Runs wslc --version, session list and list -a, and shows the raw answers. Copy the output when reporting a connection problem.' }),
+    diagBtn,
+    diagOut,
+  );
   return root;
 }
 

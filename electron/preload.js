@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('wslc', {
   removeNetwork: (name) => ipcRenderer.invoke('wslc:removeNetwork', name),
   version: () => ipcRenderer.invoke('wslc:version'),
   sessionInfo: () => ipcRenderer.invoke('wslc:sessionInfo'),
+  diagnose: () => ipcRenderer.invoke('wslc:diagnose'),
   isMock: () => ipcRenderer.invoke('wslc:isMock'),
 
   // returns a stop() function; onData/onEnd fire until then

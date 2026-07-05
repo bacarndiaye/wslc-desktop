@@ -104,6 +104,7 @@ function registerIpc() {
   h('wslc:removeNetwork', (name) => wslc.removeNetwork(name));
   h('wslc:version', () => wslc.version());
   h('wslc:sessionInfo', () => wslc.sessionInfo());
+  h('wslc:diagnose', () => wslc.diagnose());
   h('wslc:isMock', () => wslc.MOCK);
 
   h('app:getSettings', () => loadSettings());

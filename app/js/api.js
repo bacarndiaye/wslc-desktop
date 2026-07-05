@@ -64,6 +64,7 @@ function browserMock() {
     removeNetwork: async (name) => { await d(); state.networks = state.networks.filter((n) => n.name !== name); return { ok: true }; },
     version: async () => ({ ok: true, version: 'wslc 2.9.3.0 (browser demo)' }),
     sessionInfo: async () => ({ ok: true, sessions: [{ name: 'wslc-cli-demo', elevated: false }] }),
+    diagnose: async () => ({ bin: 'demo', steps: [{ cmd: 'wslc --version', code: 0, ms: 12, stdout: 'wslc 2.9.3.0 (browser demo)', stderr: '' }] }),
     isMock: async () => true,
     streamLogs: (name, onData) => {
       onData(`[demo] streaming logs for ${name}\n`);
