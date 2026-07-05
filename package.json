@@ -1,0 +1,48 @@
+{
+  "name": "wslc-desktop",
+  "productName": "WSLC Desktop",
+  "version": "0.1.0",
+  "description": "A simple, fluid desktop app for WSL containers (wslc) — manage containers, images, volumes and networks like Docker Desktop, the Windows way.",
+  "author": "Bacar Ndiaye",
+  "license": "MIT",
+  "homepage": "https://github.com/bacarndiaye/wslc-desktop",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:mock": "cross-env WSLC_DESKTOP_MOCK=1 electron .",
+    "icons": "node scripts/gen-icon.mjs",
+    "test": "node --test tests/wslc.test.js",
+    "dist": "npm run icons && electron-builder --win",
+    "pack": "npm run icons && electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.bacarndiaye.wslcdesktop",
+    "productName": "WSLC Desktop",
+    "icon": "build/icon.png",
+    "files": [
+      "electron/**/*",
+      "app/**/*",
+      "assets/logo.svg",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64", "arm64"] }
+      ],
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "WSLC Desktop"
+    },
+    "publish": { "provider": "github" }
+  }
+}

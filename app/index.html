@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>WSLC Desktop</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header id="titlebar">
+  <div class="app-identity">
+    <svg class="app-logo" viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#0067C0"/><stop offset="1" stop-color="#4CC2FF"/>
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="44" height="44" rx="10" fill="url(#lg)"/>
+      <rect x="10" y="10" width="13" height="13" rx="2.5" fill="#fff" opacity=".55"/>
+      <rect x="25" y="10" width="13" height="13" rx="2.5" fill="#fff" opacity=".55"/>
+      <rect x="10" y="25" width="13" height="13" rx="2.5" fill="#fff" opacity=".55"/>
+      <g>
+        <rect x="24" y="24" width="16" height="16" rx="3" fill="#fff"/>
+        <path d="M27 29h10M27 32h10M27 35h10" stroke="#0067C0" stroke-width="1.8" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <span class="app-name">WSLC Desktop</span>
+  </div>
+  <div class="search-wrap">
+    <input id="search" type="search" placeholder="Search containers, images…" spellcheck="false" autocomplete="off">
+  </div>
+  <div class="titlebar-spacer"></div>
+</header>
+
+<div id="shell">
+  <nav id="navrail" aria-label="Main">
+    <button class="nav-item" data-view="containers" aria-current="page">
+      <span class="nav-glyph">&#xE7B8;</span><span class="nav-fallback">▣</span><span class="nav-label">Containers</span>
+      <span class="nav-count" id="count-containers"></span>
+    </button>
+    <button class="nav-item" data-view="images">
+      <span class="nav-glyph">&#xE7B1;</span><span class="nav-fallback">◫</span><span class="nav-label">Images</span>
+      <span class="nav-count" id="count-images"></span>
+    </button>
+    <button class="nav-item" data-view="volumes">
+      <span class="nav-glyph">&#xEDA2;</span><span class="nav-fallback">⛁</span><span class="nav-label">Volumes</span>
+      <span class="nav-count" id="count-volumes"></span>
+    </button>
+    <button class="nav-item" data-view="networks">
+      <span class="nav-glyph">&#xE968;</span><span class="nav-fallback">🖧</span><span class="nav-label">Networks</span>
+      <span class="nav-count" id="count-networks"></span>
+    </button>
+    <div class="nav-bottom">
+      <button class="nav-item" data-view="settings">
+        <span class="nav-glyph">&#xE713;</span><span class="nav-fallback">⚙</span><span class="nav-label">Settings</span>
+      </button>
+    </div>
+  </nav>
+
+  <main id="content" tabindex="-1"></main>
+
+  <aside id="detail" aria-hidden="true">
+    <div class="detail-head">
+      <h2 id="detail-title">Detail</h2>
+      <button id="detail-close" class="icon-btn" title="Close" aria-label="Close details">✕</button>
+    </div>
+    <div class="detail-tabs" id="detail-tabs"></div>
+    <div class="detail-body" id="detail-body"></div>
+  </aside>
+</div>
+
+<footer id="sessionbar">
+  <span class="sess-item" id="sess-engine"><span class="dot dot-wait"></span><span id="sess-engine-text">Connecting to wslc…</span></span>
+  <span class="sess-item" id="sess-session" hidden></span>
+  <span class="sess-item" id="sess-mock" hidden><span class="badge badge-caution">Demo data</span></span>
+  <span class="sess-flex"></span>
+  <span class="sess-item sess-hint" id="sess-hint"></span>
+</footer>
+
+<div id="toasts" aria-live="polite"></div>
+<dialog id="modal"></dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
