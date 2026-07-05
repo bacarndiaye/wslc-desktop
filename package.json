@@ -12,7 +12,7 @@
     "start:mock": "cross-env WSLC_DESKTOP_MOCK=1 electron .",
     "icons": "node scripts/gen-icon.mjs",
     "test": "node --test tests/wslc.test.js",
-    "dist": "npm run icons && electron-builder --win",
+    "dist": "npm run icons && electron-builder --win --publish never",
     "pack": "npm run icons && electron-builder --win --dir"
   },
   "devDependencies": {
