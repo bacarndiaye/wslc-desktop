@@ -154,48 +154,104 @@ function asArray(v) {
   return [v];
 }
 
+// wslc's --format json is machine-shaped: epoch-second timestamps, numeric
+// state enums, port structs, byte sizes. Everything is turned into display
+// strings here, once, so views and the columns fallback agree on one shape.
+// The plain-text fallback is also locale-sensitive (French Windows prints
+// NOM / ÉTAT / DATE DE CRÉATION headers), hence the localized pick aliases.
+
+const PORT_PROTOCOLS = { 6: 'tcp', 17: 'udp' }; // IANA protocol numbers
+
+function formatPort(p) {
+  if (!p || typeof p !== 'object') return String(p ?? '').trim();
+  const host = pick(p, 'hostport');
+  const cont = pick(p, 'containerport') || host;
+  if (host === '' && cont === '') return '';
+  const addr = String(pick(p, 'bindingaddress', 'hostip') || '');
+  const protoRaw = pick(p, 'protocol');
+  const proto = PORT_PROTOCOLS[protoRaw] || (String(protoRaw).match(/^[a-z]+$/i) ? String(protoRaw).toLowerCase() : 'tcp');
+  return `${addr ? `${addr}:` : ''}${host || cont}->${cont || host}/${proto}`;
+}
+
+function epochToText(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return String(v ?? '').trim(); // already text ("15 minutes ago")
+  const ms = n < 1e12 ? n * 1000 : n; // wslc emits epoch seconds
+  const diff = Math.max(0, Date.now() - ms);
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} minute${min > 1 ? 's' : ''} ago`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h} hour${h > 1 ? 's' : ''} ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} days ago`;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function formatBytes(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return String(v ?? '').trim(); // already text ("1.2 GB")
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let x = n; let i = 0;
+  while (x >= 1024 && i < units.length - 1) { x /= 1024; i += 1; }
+  return `${x >= 10 || i === 0 ? Math.round(x) : x.toFixed(1)} ${units[i]}`;
+}
+
 function normalizeContainer(raw) {
-  const name = String(pick(raw, 'name', 'names', 'container') || '').replace(/^\//, '');
-  const stateRaw = String(pick(raw, 'state', 'status') || '').toLowerCase();
-  const running = /running|up/.test(stateRaw);
+  const name = String(pick(raw, 'name', 'names', 'container', 'nom') || '').replace(/^\//, '');
+  const stateVal = pick(raw, 'state', 'status', 'état', 'etat');
+  // Numeric enum in JSON mode: 2 = running (checked against inspect's
+  // State.Status), 1 = created. Strings come from the plain-text fallback.
+  let state;
+  if (typeof stateVal === 'number') {
+    state = stateVal === 2 ? 'running' : (stateVal === 1 ? 'created' : 'stopped');
+  } else {
+    const s = String(stateVal).toLowerCase();
+    state = /running|up/.test(s) ? 'running' : (/creat/.test(s) ? 'created' : 'stopped');
+  }
+  const changed = epochToText(pick(raw, 'statechangedat'));
+  const statusText = typeof stateVal === 'number'
+    ? `${state}${changed ? ` ${changed}` : ''}`
+    : String(pick(raw, 'status', 'state', 'état', 'etat') || '');
   const ports = asArray(pick(raw, 'ports', 'publishedports', 'port'))
-    .flatMap((p) => String(p).split(',')).map((s) => s.trim()).filter(Boolean);
+    .flatMap((p) => (p && typeof p === 'object' ? [formatPort(p)] : String(p).split(',')))
+    .map((s) => s.trim()).filter(Boolean);
   return {
-    id: String(pick(raw, 'id', 'containerid') || name),
+    id: String(pick(raw, 'id', 'containerid', 'id de conteneur') || name),
     name,
     image: String(pick(raw, 'image') || ''),
-    state: running ? 'running' : (/creat/.test(stateRaw) ? 'created' : 'stopped'),
-    status: String(pick(raw, 'status', 'state') || ''),
+    state,
+    status: statusText,
     ports,
-    created: String(pick(raw, 'createdat', 'created') || ''),
-    network: String(pick(raw, 'network', 'networks') || ''),
+    created: epochToText(pick(raw, 'createdat', 'created', 'date de création')),
+    network: String(pick(raw, 'network', 'networks', 'réseau') || ''),
   };
 }
 
 function normalizeImage(raw) {
-  const repo = String(pick(raw, 'repository', 'name', 'image') || '');
-  const tag = String(pick(raw, 'tag') || '');
+  const repo = String(pick(raw, 'repository', 'name', 'image', 'dépôt', 'depot') || '');
+  const tag = String(pick(raw, 'tag', 'balise') || '');
   return {
     id: String(pick(raw, 'id', 'imageid') || `${repo}:${tag}`),
     reference: tag && !repo.includes(':') ? `${repo}:${tag}` : repo,
-    size: String(pick(raw, 'size') || ''),
-    created: String(pick(raw, 'createdat', 'created', 'createdsince') || ''),
+    size: formatBytes(pick(raw, 'size', 'taille')),
+    created: epochToText(pick(raw, 'createdat', 'created', 'createdsince', 'date de création')),
   };
 }
 
 function normalizeVolume(raw) {
   return {
-    name: String(pick(raw, 'name', 'volumename') || ''),
-    driver: String(pick(raw, 'driver') || 'local'),
+    name: String(pick(raw, 'name', 'volumename', 'nom') || ''),
+    driver: String(pick(raw, 'driver', 'pilote') || 'local'),
     mountpoint: String(pick(raw, 'mountpoint') || ''),
   };
 }
 
 function normalizeNetwork(raw) {
   return {
-    name: String(pick(raw, 'name', 'networkname') || ''),
+    name: String(pick(raw, 'name', 'networkname', 'nom') || ''),
     id: String(pick(raw, 'id', 'networkid') || ''),
-    driver: String(pick(raw, 'driver') || ''),
+    driver: String(pick(raw, 'driver', 'pilote') || ''),
   };
 }
 
@@ -424,5 +480,5 @@ module.exports = {
   startLogs,
   stopLogs,
   // exported for unit tests
-  _internals: { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick, enqueue },
+  _internals: { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick, enqueue, formatPort, epochToText, formatBytes },
 };
