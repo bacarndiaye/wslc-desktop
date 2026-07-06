@@ -49,11 +49,28 @@ function enqueue(fn) {
 
 const SHARING_VIOLATION = /ERROR_SHARING_VIOLATION|0x80070020|utilisé par un autre processus|used by another process/i;
 
-function runOnce(args, timeout) {
+// wslc misbehaves in processes without a console (a GUI app is one):
+// session-store access can fail with ERROR_SHARING_VIOLATION even when the
+// same command works in a terminal. Running through cmd.exe gives wslc an
+// invisible console to inherit — terminal-like conditions. The mode is
+// auto-detected on first failure and remembered for the app's lifetime.
+let execMode = process.env.WSLC_DESKTOP_EXEC_MODE || 'auto'; // auto | direct | cmd
+
+function cmdQuote(a) {
+  return /[\s"^&|<>()%!]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : String(a);
+}
+
+function runOnce(args, timeout, mode = 'direct') {
+  const useCmd = mode === 'cmd' && process.platform === 'win32';
+  const file = useCmd ? 'cmd.exe' : findBin();
+  const argv = useCmd
+    ? ['/d', '/s', '/c', [findBin(), ...args].map(cmdQuote).join(' ')]
+    : args;
   return new Promise((resolve) => {
-    const child = execFile(findBin(), args, {
+    const child = execFile(file, argv, {
       timeout,
       windowsHide: true,
+      windowsVerbatimArguments: useCmd,
       maxBuffer: 32 * 1024 * 1024,
       encoding: 'utf8',
     }, (error, stdout, stderr) => {
@@ -71,11 +88,19 @@ function runOnce(args, timeout) {
 
 function run(args, { timeout = DEFAULT_TIMEOUT } = {}) {
   return enqueue(async () => {
-    let res = await runOnce(args, timeout);
+    let res = await runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
+    // Direct mode hit the no-console lock issue? Try once through cmd.exe;
+    // adopt it for the rest of the session if it answers.
+    if (!res.ok && execMode === 'auto' && SHARING_VIOLATION.test(res.stderr + res.stdout)) {
+      const alt = await runOnce(args, timeout, 'cmd');
+      if (alt.ok) { execMode = 'cmd'; return alt; }
+      res = alt;
+    }
     for (let attempt = 0; !res.ok && SHARING_VIOLATION.test(res.stderr + res.stdout) && attempt < 3; attempt += 1) {
       await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-      res = await runOnce(args, timeout);
+      res = await runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
     }
+    if (res.ok && execMode === 'auto') execMode = 'direct';
     return res;
   });
 }
@@ -315,11 +340,17 @@ async function version() {
 async function diagnose() {
   if (MOCK) return { bin: 'mock', steps: [{ cmd: 'mock', code: 0, ms: 0, stdout: 'mock backend active', stderr: '' }] };
   const steps = [];
-  for (const args of [['--version'], ['system', 'session', 'list'], ['list', '-a']]) {
+  const probes = [
+    { args: ['--version'], mode: 'direct' },
+    { args: ['system', 'session', 'list'], mode: 'direct' },
+    { args: ['list', '-a'], mode: 'direct' },
+    { args: ['list', '-a'], mode: 'cmd' }, // compares console-inherited execution
+  ];
+  for (const { args, mode } of probes) {
     const t0 = Date.now();
-    const res = await runOnce(args, 45_000);
+    const res = await runOnce(args, 45_000, mode);
     steps.push({
-      cmd: `wslc ${args.join(' ')}`,
+      cmd: `wslc ${args.join(' ')}${mode === 'cmd' ? '   [via cmd.exe]' : ''}`,
       code: res.code,
       timedOut: res.timedOut,
       ms: Date.now() - t0,
@@ -328,7 +359,7 @@ async function diagnose() {
     });
     if (res.timedOut) break; // no point hammering a wedged session
   }
-  return { bin: findBin(), steps };
+  return { bin: findBin(), execMode, steps };
 }
 
 // Session facts for the session bar. Elevation is inferred from the session
