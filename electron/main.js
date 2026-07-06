@@ -70,7 +70,13 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', 'app', 'index.html'));
   win.once('ready-to-show', () => win.show());
-  win.on('closed', () => { win = null; });
+  // A broken GPU state (e.g. a shader cache corrupted by a forced kill
+  // during an update) can swallow the first paint: ready-to-show then never
+  // fires and the window stays hidden forever, looking like a failed launch.
+  const forceShow = setTimeout(() => {
+    if (win && !win.isDestroyed() && !win.isVisible()) win.show();
+  }, 4000);
+  win.on('closed', () => { clearTimeout(forceShow); win = null; });
 
   nativeTheme.on('updated', () => {
     updateTitlebarOverlay();
@@ -149,7 +155,23 @@ if (require.main !== module) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    // Launching the app again must always surface a window, even if the
+    // running instance is a leftover whose window is hidden or gone.
+    if (!win || win.isDestroyed()) { createWindow(); return; }
+    if (!win.isVisible()) win.show();
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+  // If the GPU process keeps dying, relaunch once in software rendering
+  // instead of leaving the user with an invisible window.
+  let gpuCrashes = 0;
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type !== 'GPU' || !['crashed', 'abnormal-exit'].includes(details.reason)) return;
+    gpuCrashes += 1;
+    if (gpuCrashes >= 2 && !process.argv.includes('--disable-gpu')) {
+      app.relaunch({ args: process.argv.slice(1).concat('--disable-gpu') });
+      app.exit(0);
+    }
   });
   app.whenReady().then(() => {
     registerIpc();

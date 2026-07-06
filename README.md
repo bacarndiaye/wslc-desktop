@@ -49,6 +49,16 @@ installed (`wslc` must work in a terminal).
 
 ## Troubleshooting
 
+**The app doesn't seem to launch (no window appears)** — usually a leftover
+instance whose window never became visible: launching again just defers to it,
+so nothing seems to happen. Open Task Manager, end every *WSLC Desktop*
+process, and start the app again. If the window still doesn't appear, the GPU
+shader cache was likely corrupted (typical after an update installed over the
+running app): quit the app, delete `%APPDATA%\WSLC Desktop\GPUCache`, and
+relaunch. Since v0.1.6 the app recovers from both cases by itself — relaunching
+always surfaces the window, and repeated GPU crashes fall back to software
+rendering.
+
 **Lists stay empty with “wslc files are locked by another wslc command still
 running” (`ERROR_SHARING_VIOLATION`)** — first check whether it's really the app:
 run `wslc list -a` in a regular terminal. If the terminal shows the same error, the
