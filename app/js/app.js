@@ -65,6 +65,7 @@ function render() {
 
 let refreshTimer = null;
 let refreshing = false;
+let failStreak = 0; // consecutive all-failed refreshes → back off politely
 
 async function refresh(immediateRender = false) {
   if (refreshing) return;
@@ -81,6 +82,7 @@ async function refresh(immediateRender = false) {
     ctx.data.loaded = true;
     void resolveComposeProjects();
     const anyOk = [c, i, v, n].some((r) => r.ok);
+    failStreak = anyOk ? 0 : failStreak + 1;
     updateEngineStatus(anyOk && !ctx.data.error);
     // If the engine answered but the boot-time probe had failed (cold
     // session), fill in the version and session details now.
@@ -111,8 +113,16 @@ async function resolveComposeProjects() {
 }
 
 function scheduleRefresh() {
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => refresh(), Math.max(2, ctx.settings.refreshSeconds) * 1000);
+  if (refreshTimer) clearTimeout(refreshTimer);
+  const tick = async () => {
+    await refresh();
+    // When wslc keeps failing, poll gently (up to 60s) instead of hammering
+    // a wedged session — the preview has been deadlocked by call storms.
+    const base = Math.max(2, ctx.settings.refreshSeconds);
+    const delay = failStreak > 1 ? Math.min(60, base * 2 ** Math.min(failStreak - 1, 5)) : base;
+    refreshTimer = setTimeout(tick, delay * 1000);
+  };
+  refreshTimer = setTimeout(tick, Math.max(2, ctx.settings.refreshSeconds) * 1000);
 }
 
 async function act(name, action, verb) {
