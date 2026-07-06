@@ -93,6 +93,7 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 **Privacy statement**: WSLC Desktop does not transfer any information to other
 networked systems. It only invokes the local `wslc.exe` CLI; the only network
 activity is the one you request explicitly (pulling images through wslc).
+Full policy: [Privacy Policy](https://bacarndiaye.github.io/wslc-desktop/privacy.html).
 
 ## Development
 
