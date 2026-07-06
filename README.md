@@ -47,6 +47,37 @@ installed (`wslc` must work in a terminal).
 > session per elevation level; an elevated app would see different containers than
 > your regular terminals. The session bar tells you where you are.
 
+## Troubleshooting
+
+**Lists stay empty with “wslc files are locked by another wslc command still
+running” (`ERROR_SHARING_VIOLATION`)** — first check whether it's really the app:
+run `wslc list -a` in a regular terminal. If the terminal shows the same error, the
+wslc **session store is locked machine-wide** — a preview bug we've hit after storms
+of concurrent wslc invocations. No app or terminal can fix it from the outside;
+reset the wslc state:
+
+1. Close WSLC Desktop.
+2. From PowerShell: `wsl --shutdown`, reopen a terminal, test `wslc list -a`.
+3. Still failing? From an **admin** PowerShell: `Restart-Service WslService -Force`
+   (this stops all of WSL). If the service hangs in `StopPending`, kill its PID —
+   see the [recovery cheat sheet](https://github.com/bacarndiaye/wslc-compose/blob/main/docs/MIGRATION.md#appendix--recovery-cheat-sheet).
+4. Restart your containers, then launch WSLC Desktop again.
+
+To avoid triggering this state, WSLC Desktop runs **at most one wslc command at a
+time**, retries transient lock errors, and backs off its polling (up to 60 s)
+while wslc keeps failing. Version checks can still succeed while lists fail: the
+green “wslc x.y.z” dot only means the binary answers, not that the session store
+is healthy.
+
+**“Starting the wslc session…” for a long time** — the first wslc call after a
+Windows boot starts the session's utility VM; it can take over a minute. The app
+keeps retrying and connects by itself.
+
+**Anything else** — *Settings → Run diagnostics* shows the raw output of
+`wslc --version`, `wslc system session list` and `wslc list -a` (direct and through
+`cmd.exe`), with exit codes and timings. Paste that output in your
+[issue](https://github.com/bacarndiaye/wslc-desktop/issues).
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://signpath.io), certificate by
