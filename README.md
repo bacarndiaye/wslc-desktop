@@ -35,7 +35,7 @@ Windows 11 app (Fluent design, Mica, Segoe UI) to see and control everything wsl
 
 ## Install
 
-Download the latest `WSLC Desktop-Setup-*.exe` from the
+Download the latest `WSLC-Desktop-Setup-*.exe` from the
 [Releases page](https://github.com/bacarndiaye/wslc-desktop/releases) and run it.
 Per-user install, no admin rights needed.
 
