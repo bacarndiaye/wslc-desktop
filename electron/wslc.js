@@ -21,6 +21,10 @@ const LONG_TIMEOUT = 15 * 60_000; // pull / build
 
 let cachedBin = null;
 
+// Settings can change WSLC_DESKTOP_BIN at runtime; the cache must be
+// dropped or the old binary keeps being used until the app restarts.
+function resetBinCache() { cachedBin = null; }
+
 function findBin() {
   if (cachedBin) return cachedBin;
   const candidates = [
@@ -86,23 +90,40 @@ function runOnce(args, timeout, mode = 'direct') {
   });
 }
 
+// Seam for unit tests: run()/diagnose() go through impl.runOnce so the
+// retry / fallback logic can be exercised without spawning processes.
+const impl = { runOnce };
+
 function run(args, { timeout = DEFAULT_TIMEOUT } = {}) {
   return enqueue(async () => {
-    let res = await runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
+    let res = await impl.runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
     // Direct mode hit the no-console lock issue? Try once through cmd.exe;
     // adopt it for the rest of the session if it answers.
     if (!res.ok && execMode === 'auto' && SHARING_VIOLATION.test(res.stderr + res.stdout)) {
-      const alt = await runOnce(args, timeout, 'cmd');
+      const alt = await impl.runOnce(args, timeout, 'cmd');
       if (alt.ok) { execMode = 'cmd'; return alt; }
       res = alt;
     }
     for (let attempt = 0; !res.ok && SHARING_VIOLATION.test(res.stderr + res.stdout) && attempt < 3; attempt += 1) {
       await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-      res = await runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
+      res = await impl.runOnce(args, timeout, execMode === 'cmd' ? 'cmd' : 'direct');
     }
     if (res.ok && execMode === 'auto') execMode = 'direct';
     return res;
   });
+}
+
+// IPC arguments come from the renderer and end up as wslc argv entries.
+// wslc's preview CLI has no documented end-of-options separator ("--"), so
+// anything that could parse as a flag (leading "-") is rejected here — the
+// single choke point every action goes through — rather than per call site.
+const NAME_RE = /^[\w][\w.-]*$/; // container / volume / network names
+const REF_RE = /^[\w][\w./:@+-]*$/; // image references (repo[:tag][@digest])
+
+function checkArg(value, re, what) {
+  return re.test(String(value ?? ''))
+    ? null
+    : { ok: false, error: `Invalid ${what}: ${JSON.stringify(String(value ?? ''))}` };
 }
 
 function parseJsonLoose(text) {
@@ -304,6 +325,8 @@ async function listNetworks() {
 
 async function containerAction(name, action) {
   if (MOCK) return mock.containerAction(name, action);
+  const bad = checkArg(name, NAME_RE, 'container name');
+  if (bad) return bad;
   const argsByAction = {
     start: ['start', name],
     stop: ['stop', name],
@@ -324,6 +347,8 @@ async function containerAction(name, action) {
 
 async function inspect(name) {
   if (MOCK) return mock.inspect(name);
+  const bad = checkArg(name, NAME_RE, 'container name');
+  if (bad) return bad;
   const res = await run(['inspect', name]);
   if (!res.ok) return { ok: false, error: friendlyError(res) };
   const parsed = parseJsonLoose(res.stdout);
@@ -332,20 +357,33 @@ async function inspect(name) {
 
 async function pullImage(reference) {
   if (MOCK) return mock.pullImage(reference);
+  const bad = checkArg(reference, REF_RE, 'image reference');
+  if (bad) return bad;
   const res = await run(['pull', reference], { timeout: LONG_TIMEOUT });
   return res.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
 }
 
 async function removeImage(reference) {
   if (MOCK) return mock.removeImage(reference);
+  const bad = checkArg(reference, REF_RE, 'image reference');
+  if (bad) return bad;
   const res = await run(['rmi', reference]);
   if (res.ok) return { ok: true };
   const res2 = await run(['image', 'remove', reference]);
-  return res2.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
+  return res2.ok ? { ok: true } : { ok: false, error: friendlyError(res2) };
 }
 
 async function runContainer(opts) {
   if (MOCK) return mock.runContainer(opts);
+  let bad = checkArg(opts.image, REF_RE, 'image reference');
+  if (!bad && opts.name) bad = checkArg(opts.name, NAME_RE, 'container name');
+  if (!bad && opts.network) bad = checkArg(opts.network, NAME_RE, 'network name');
+  // Ports/volumes/env have a broader grammar; only a value that could be
+  // read as a flag is rejected.
+  for (const v of [...(opts.ports || []), ...(opts.volumes || []), ...(opts.env || [])]) {
+    if (!bad && /^\s*-/.test(String(v))) bad = { ok: false, error: `Invalid value: ${JSON.stringify(String(v))}` };
+  }
+  if (bad) return bad;
   const args = ['run', '-d'];
   if (opts.name) args.push('--name', opts.name);
   for (const p of opts.ports || []) args.push('-p', p);
@@ -358,29 +396,18 @@ async function runContainer(opts) {
   return res.ok ? { ok: true, id: res.stdout.trim() } : { ok: false, error: friendlyError(res) };
 }
 
-async function createVolume(name) {
-  if (MOCK) return mock.createVolume(name);
-  const res = await run(['volume', 'create', name]);
+async function simpleNamedAction(mockKey, argv, name, what) {
+  if (MOCK) return mock[mockKey](name);
+  const bad = checkArg(name, NAME_RE, what);
+  if (bad) return bad;
+  const res = await run([...argv, name]);
   return res.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
 }
 
-async function removeVolume(name) {
-  if (MOCK) return mock.removeVolume(name);
-  const res = await run(['volume', 'remove', name]);
-  return res.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
-}
-
-async function createNetwork(name) {
-  if (MOCK) return mock.createNetwork(name);
-  const res = await run(['network', 'create', name]);
-  return res.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
-}
-
-async function removeNetwork(name) {
-  if (MOCK) return mock.removeNetwork(name);
-  const res = await run(['network', 'remove', name]);
-  return res.ok ? { ok: true } : { ok: false, error: friendlyError(res) };
-}
+const createVolume = (name) => simpleNamedAction('createVolume', ['volume', 'create'], name, 'volume name');
+const removeVolume = (name) => simpleNamedAction('removeVolume', ['volume', 'remove'], name, 'volume name');
+const createNetwork = (name) => simpleNamedAction('createNetwork', ['network', 'create'], name, 'network name');
+const removeNetwork = (name) => simpleNamedAction('removeNetwork', ['network', 'remove'], name, 'network name');
 
 async function version() {
   if (MOCK) return mock.version();
@@ -404,7 +431,7 @@ async function diagnose() {
   ];
   for (const { args, mode } of probes) {
     const t0 = Date.now();
-    const res = await runOnce(args, 45_000, mode);
+    const res = await impl.runOnce(args, 45_000, mode);
     steps.push({
       cmd: `wslc ${args.join(' ')}${mode === 'cmd' ? '   [via cmd.exe]' : ''}`,
       code: res.code,
@@ -440,14 +467,30 @@ const logStreams = new Map(); // streamId -> child
 
 function startLogs(streamId, name, onData, onEnd) {
   if (MOCK) return mock.startLogs(streamId, name, onData, onEnd, logStreams);
-  const child = spawn(findBin(), ['logs', '-f', '--tail', '200', name], {
-    windowsHide: true,
-  });
-  logStreams.set(streamId, child);
-  child.stdout.on('data', (d) => onData(d.toString()));
-  child.stderr.on('data', (d) => onData(d.toString()));
-  child.on('close', () => { logStreams.delete(streamId); onEnd(); });
-  child.on('error', (e) => { logStreams.delete(streamId); onData(`\n[wslc error] ${e.message}\n`); onEnd(); });
+  if (!NAME_RE.test(String(name ?? ''))) {
+    onData(`\n[wslc error] invalid container name\n`);
+    onEnd();
+    return;
+  }
+  // Starting `logs -f` races the session-store lock like any other wslc
+  // invocation, so the spawn goes through the single-lane queue. The slot is
+  // released once the stream is up (first output, or a grace period for a
+  // silent container) — an established stream no longer contends with the
+  // one-shot commands, which is why the whole -f lifetime must not hold the
+  // queue: it would starve every refresh until the stream stops.
+  enqueue(() => new Promise((release) => {
+    let released = false;
+    const releaseOnce = () => { if (!released) { released = true; clearTimeout(grace); release(); } };
+    const grace = setTimeout(releaseOnce, 1500);
+    const child = spawn(findBin(), ['logs', '-f', '--tail', '200', name], {
+      windowsHide: true,
+    });
+    logStreams.set(streamId, child);
+    child.stdout.on('data', (d) => { releaseOnce(); onData(d.toString()); });
+    child.stderr.on('data', (d) => { releaseOnce(); onData(d.toString()); });
+    child.on('close', () => { releaseOnce(); logStreams.delete(streamId); onEnd(); });
+    child.on('error', (e) => { releaseOnce(); logStreams.delete(streamId); onData(`\n[wslc error] ${e.message}\n`); onEnd(); });
+  }));
 }
 
 function stopLogs(streamId) {
@@ -461,6 +504,7 @@ function stopLogs(streamId) {
 module.exports = {
   MOCK,
   findBin,
+  resetBinCache,
   listContainers,
   listImages,
   listVolumes,
@@ -480,5 +524,12 @@ module.exports = {
   startLogs,
   stopLogs,
   // exported for unit tests
-  _internals: { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick, enqueue, formatPort, epochToText, formatBytes },
+  _internals: {
+    parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, normalizeVolume, normalizeNetwork,
+    pick, enqueue, formatPort, epochToText, formatBytes,
+    friendlyError, listWithFallback, checkArg, NAME_RE, REF_RE,
+    impl, // stub impl.runOnce to test run()'s retry / fallback logic
+    setExecMode: (m) => { execMode = m; },
+    getExecMode: () => execMode,
+  },
 };

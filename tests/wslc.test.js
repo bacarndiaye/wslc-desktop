@@ -2,7 +2,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { _internals } = require('../electron/wslc');
+const wslc = require('../electron/wslc');
+const { _internals } = wslc;
 
 const { parseColumns, parseJsonLoose, normalizeContainer, normalizeImage, pick } = _internals;
 
@@ -106,4 +107,142 @@ test('enqueue runs jobs strictly one at a time, even after failures', async () =
   assert.deepEqual(order, ['a', 'b', 'c']);
   assert.equal(results[1].status, 'rejected');
   assert.equal(results[2].status, 'fulfilled');
+});
+
+test('normalizeVolume and normalizeNetwork tolerate field name variants', () => {
+  const { normalizeVolume, normalizeNetwork } = _internals;
+  assert.deepEqual(normalizeVolume({ Name: 'data', Driver: 'local', Mountpoint: '/mnt/data' }),
+    { name: 'data', driver: 'local', mountpoint: '/mnt/data' });
+  assert.equal(normalizeVolume({ NOM: 'fr-vol' }).name, 'fr-vol');
+  const n = normalizeNetwork({ NetworkName: 'backend', Id: 'abc123', Pilote: 'bridge' });
+  assert.equal(n.name, 'backend');
+  assert.equal(n.driver, 'bridge');
+});
+
+test('friendlyError maps the known preview failures to readable messages', () => {
+  const { friendlyError } = _internals;
+  const base = { ok: false, code: 1, timedOut: false, stdout: '', stderr: '' };
+  assert.match(friendlyError({ ...base, timedOut: true }), /did not answer in time/);
+  assert.match(friendlyError({ ...base, stderr: 'error 0x8007000e' }), /limit of ~15 mounted volumes/);
+  assert.match(friendlyError({ ...base, stderr: 'ERROR_SHARING_VIOLATION' }), /locked by another wslc command/);
+  assert.match(friendlyError({ ...base, stderr: 'fichier utilisé par un autre processus' }), /locked by another wslc command/);
+  assert.equal(friendlyError({ ...base, stderr: 'boom' }), 'boom');
+  assert.equal(friendlyError({ ...base, code: 3 }), 'wslc exited with code 3');
+});
+
+test('names that could parse as wslc flags are rejected before any spawn', async () => {
+  const { impl, checkArg, NAME_RE, REF_RE } = _internals;
+  const realRunOnce = impl.runOnce;
+  let spawned = 0;
+  impl.runOnce = async () => { spawned += 1; return { ok: true, code: 0, timedOut: false, stdout: '', stderr: '' }; };
+  try {
+    for (const call of [
+      wslc.containerAction('--all', 'stop'),
+      wslc.inspect('-f'),
+      wslc.pullImage('--registry=evil'),
+      wslc.removeImage('-rf'),
+      wslc.createVolume('--force'),
+      wslc.removeNetwork('-x'),
+      wslc.runContainer({ image: 'nginx', ports: ['--privileged'] }),
+    ]) {
+      const res = await call;
+      assert.equal(res.ok, false);
+      assert.match(res.error, /^Invalid /);
+    }
+    assert.equal(spawned, 0, 'an invalid name reached the CLI');
+  } finally {
+    impl.runOnce = realRunOnce;
+  }
+  // Legitimate shapes still pass the same rules
+  assert.equal(checkArg('web-1', NAME_RE, 'n'), null);
+  assert.equal(checkArg('registry.io:5000/team/app:1.0@sha256:abcd', REF_RE, 'r'), null);
+});
+
+test('run retries transient sharing violations, then succeeds', async () => {
+  const { impl, setExecMode } = _internals;
+  const realRunOnce = impl.runOnce;
+  setExecMode('direct');
+  let calls = 0;
+  impl.runOnce = async () => {
+    calls += 1;
+    return calls === 1
+      ? { ok: false, code: 1, timedOut: false, stdout: '', stderr: 'ERROR_SHARING_VIOLATION' }
+      : { ok: true, code: 0, timedOut: false, stdout: 'v1.0', stderr: '' };
+  };
+  try {
+    const res = await wslc.version();
+    assert.equal(res.ok, true);
+    assert.equal(calls, 2);
+  } finally {
+    impl.runOnce = realRunOnce;
+    setExecMode('auto');
+  }
+});
+
+test('run auto-adopts cmd mode when direct hits the no-console lock', async () => {
+  const { impl, setExecMode, getExecMode } = _internals;
+  const realRunOnce = impl.runOnce;
+  setExecMode('auto');
+  const modes = [];
+  impl.runOnce = async (_args, _timeout, mode) => {
+    modes.push(mode);
+    return mode === 'cmd'
+      ? { ok: true, code: 0, timedOut: false, stdout: 'v1.0', stderr: '' }
+      : { ok: false, code: 1, timedOut: false, stdout: '', stderr: 'used by another process' };
+  };
+  try {
+    const res = await wslc.version();
+    assert.equal(res.ok, true);
+    assert.deepEqual(modes, ['direct', 'cmd']);
+    assert.equal(getExecMode(), 'cmd');
+  } finally {
+    impl.runOnce = realRunOnce;
+    setExecMode('auto');
+  }
+});
+
+test('listWithFallback falls back from broken JSON to the columns parser', async () => {
+  const { impl, listWithFallback, normalizeContainer, setExecMode } = _internals;
+  const realRunOnce = impl.runOnce;
+  setExecMode('direct');
+  const plain = [
+    'NAME   IMAGE          STATUS',
+    'web-1  nginx:alpine   Up 3 hours',
+  ].join('\n');
+  impl.runOnce = async (args) => (args.includes('--format')
+    ? { ok: true, code: 0, timedOut: false, stdout: 'garbage not json', stderr: '' }
+    : { ok: true, code: 0, timedOut: false, stdout: plain, stderr: '' });
+  try {
+    const res = await listWithFallback(['list', '-a', '--format', 'json'], ['list', '-a'], normalizeContainer);
+    assert.equal(res.ok, true);
+    assert.equal(res.items.length, 1);
+    assert.equal(res.items[0].name, 'web-1');
+
+    impl.runOnce = async () => ({ ok: false, code: 1, timedOut: false, stdout: '', stderr: 'boom' });
+    const err = await listWithFallback(['list', '-a', '--format', 'json'], ['list', '-a'], normalizeContainer);
+    assert.equal(err.ok, false);
+    assert.equal(err.error, 'boom');
+    assert.deepEqual(err.items, []);
+  } finally {
+    impl.runOnce = realRunOnce;
+    setExecMode('auto');
+  }
+});
+
+test('removeImage reports the error of the last attempt, not the first', async () => {
+  const { impl, setExecMode } = _internals;
+  const realRunOnce = impl.runOnce;
+  setExecMode('direct');
+  impl.runOnce = async (args) => ({
+    ok: false, code: 1, timedOut: false, stdout: '',
+    stderr: args[0] === 'rmi' ? 'first-error' : 'second-error',
+  });
+  try {
+    const res = await wslc.removeImage('nginx:alpine');
+    assert.equal(res.ok, false);
+    assert.equal(res.error, 'second-error');
+  } finally {
+    impl.runOnce = realRunOnce;
+    setExecMode('auto');
+  }
 });
