@@ -37,7 +37,9 @@ Windows 11 app (Fluent design, Mica, Segoe UI) to see and control everything wsl
 
 Download the latest `WSLC-Desktop-Setup-*.exe` from the
 [Releases page](https://github.com/bacarndiaye/wslc-desktop/releases) and run it.
-Per-user install, no admin rights needed.
+Per-user install, no admin rights needed. The app then keeps itself up to date:
+it checks GitHub Releases in the background and installs new versions when you
+quit (turn this off in *Settings* if you prefer manual updates).
 
 Requirements: Windows 11 with the
 [WSL container preview](https://learn.microsoft.com/windows/wsl/wsl-container)
@@ -100,10 +102,33 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 - Until the SignPath application is approved, installers are unsigned and Windows
   SmartScreen shows an "unknown publisher" notice: choose *More info → Run anyway*.
 
-**Privacy statement**: WSLC Desktop does not transfer any information to other
-networked systems. It only invokes the local `wslc.exe` CLI; the only network
-activity is the one you request explicitly (pulling images through wslc).
+**Privacy statement**: WSLC Desktop collects no user data. Its only own network
+request is the update check against GitHub Releases, which can be turned off in
+*Settings*; everything else is local `wslc.exe` invocations plus the network
+activity you request explicitly (pulling images through wslc).
 Full policy: [Privacy Policy](https://bacarndiaye.github.io/wslc-desktop/privacy.html).
+
+## Verifying releases
+
+Each release ships a `SHA256SUMS` file (checksums of every installer) and a
+detached GPG signature `SHA256SUMS.asc`. To verify a download (Git Bash / WSL):
+
+```bash
+# 1. Import the release signing key (one-time)
+gpg --import wslc-desktop-release-public-key.asc
+
+# 2. Check the signature on the checksum file
+gpg --verify SHA256SUMS.asc SHA256SUMS
+#    → must report: Good signature from "WSLC Desktop Release Signing"
+
+# 3. Check the installer against the checksum
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+The public key is published in
+[`docs/wslc-desktop-release-public-key.asc`](docs/wslc-desktop-release-public-key.asc)
+and its fingerprint in [SECURITY.md](SECURITY.md). Release tags are
+GPG-signed with the same key (`git tag -v vX.Y.Z`).
 
 ## Development
 

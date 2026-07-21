@@ -10,8 +10,11 @@ permissions:
 # Code signing (SignPath Foundation) activates automatically once the
 # repository has the SIGNPATH_API_TOKEN secret and SIGNPATH_ORGANIZATION_ID
 # variable configured. Until then, releases ship unsigned.
+# GPG signing of SHA256SUMS activates automatically once the repository has
+# the GPG_PRIVATE_KEY (armored) and GPG_PASSPHRASE secrets configured.
 env:
   HAVE_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+  HAVE_GPG: ${{ secrets.GPG_PRIVATE_KEY != '' }}
 
 jobs:
   release:
@@ -53,7 +56,40 @@ jobs:
             Write-Host "signed: $($_.Name)"
           }
 
+      - name: Fix update metadata after signing
+        if: env.HAVE_SIGNPATH == 'true'
+        shell: bash
+        # Signing changed the installer bytes: recompute latest.yml's hashes,
+        # and drop the now-stale blockmaps (updater falls back to full download).
+        run: |
+          node scripts/patch-latest-yml.mjs dist/latest.yml
+          rm -f dist/*.blockmap
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        working-directory: dist
+        run: sha256sum *.exe | tee SHA256SUMS
+
+      - name: Sign SHA256SUMS (GPG)
+        if: env.HAVE_GPG == 'true'
+        shell: bash
+        working-directory: dist
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+            --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          gpg --verify SHA256SUMS.asc SHA256SUMS
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          # latest.yml + blockmaps drive the in-app auto-updater.
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+            dist/SHA256SUMS
+            dist/SHA256SUMS.asc
           generate_release_notes: true
