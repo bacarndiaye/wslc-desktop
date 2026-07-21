@@ -6,6 +6,10 @@
   "author": "Bacar Ndiaye",
   "license": "MIT",
   "homepage": "https://github.com/bacarndiaye/wslc-desktop",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bacarndiaye/wslc-desktop.git"
+  },
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -33,7 +37,13 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64", "arm64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "artifactName": "WSLC-Desktop-Setup-${version}-${arch}.${ext}"
     },
@@ -43,6 +53,13 @@
       "deleteAppDataOnUninstall": false,
       "shortcutName": "WSLC Desktop"
     },
-    "publish": { "provider": "github" }
+    "publish": {
+      "provider": "github",
+      "owner": "bacarndiaye",
+      "repo": "wslc-desktop"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

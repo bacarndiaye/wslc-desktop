@@ -295,6 +295,8 @@ export function settingsView(ctx) {
   );
   const refreshInput = el('input', { type: 'number', min: '2', max: '120', value: String(s.refreshSeconds) });
   const binInput = el('input', { type: 'text', value: s.wslcBin || '', placeholder: 'Auto-detect (PATH, then C:\\Program Files\\WSL\\wslc.exe)' });
+  const updateCheck = el('input', { type: 'checkbox', id: 'set-autoupdate' });
+  updateCheck.checked = s.autoUpdate !== false;
 
   const field = (label, input, hint) => {
     const f = el('div', { class: 'field', style: 'max-width:420px' }, el('label', { text: label }), input);
@@ -302,10 +304,17 @@ export function settingsView(ctx) {
     return f;
   };
 
+  const updateField = el('div', { class: 'field', style: 'max-width:420px' },
+    el('label', { for: 'set-autoupdate', style: 'display:flex; align-items:center; gap:8px' },
+      updateCheck, 'Install updates automatically'),
+    el('div', { class: 'hint', text: 'Checks GitHub Releases in the background and installs on quit. The only network request the app makes itself.' }),
+  );
+
   root.append(
     field('App theme', themeSel),
     field('Refresh interval (seconds)', refreshInput, 'How often lists reload in the background.'),
     field('wslc binary path', binInput, 'Leave empty unless wslc lives somewhere unusual.'),
+    updateField,
     el('div', { style: 'margin-top:16px' },
       el('button', {
         class: 'btn accent', onclick: async () => {
@@ -313,6 +322,7 @@ export function settingsView(ctx) {
             theme: themeSel.value,
             refreshSeconds: Math.min(120, Math.max(2, parseInt(refreshInput.value, 10) || 5)),
             wslcBin: binInput.value.trim(),
+            autoUpdate: updateCheck.checked,
           };
           ctx.settings = await host.saveSettings(next);
           await ctx.applyThemeFromSettings();

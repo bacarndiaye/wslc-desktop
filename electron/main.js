@@ -11,7 +11,7 @@ let win = null;
 /* ----------------------------------------------------------- settings */
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-const defaultSettings = { theme: 'system', refreshSeconds: 5, wslcBin: '' };
+const defaultSettings = { theme: 'system', refreshSeconds: 5, wslcBin: '', autoUpdate: true };
 
 function loadSettings() {
   try { return { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) }; }
@@ -21,6 +21,8 @@ function loadSettings() {
 function saveSettings(s) {
   try { fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2)); } catch { /* best effort */ }
   if (s.wslcBin) process.env.WSLC_DESKTOP_BIN = s.wslcBin;
+  else delete process.env.WSLC_DESKTOP_BIN;
+  wslc.resetBinCache(); // takes effect on the next wslc call, not the next app start
   applyTheme(s.theme);
 }
 
@@ -88,6 +90,26 @@ function createWindow() {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+}
+
+/* --------------------------------------------------------- auto-update */
+
+// Checks GitHub Releases (the only network request the app makes itself),
+// downloads in the background, notifies, installs on quit. The check
+// re-reads settings every time so the toggle takes effect without restart.
+const UPDATE_INTERVAL = 4 * 3600 * 1000;
+
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // dev builds have no app-update.yml
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.on('error', () => { /* offline or rate-limited: try again later */ });
+  const check = () => {
+    if (loadSettings().autoUpdate === false) return;
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  };
+  // Not at boot: the first wslc call (possibly a cold session) owns startup.
+  setTimeout(check, 15_000);
+  setInterval(check, UPDATE_INTERVAL);
 }
 
 /* ----------------------------------------------------------------- ipc */
@@ -176,6 +198,7 @@ if (require.main !== module) {
   app.whenReady().then(() => {
     registerIpc();
     createWindow();
+    setupAutoUpdate();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
   app.on('window-all-closed', () => app.quit());
